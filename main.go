@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kr/pretty"
 	"github.com/santegoeds/nbx"
@@ -14,7 +15,7 @@ import (
 func main() {
 	side := flag.String("side", "", "Order side: 'buy' or 'sell' (required)")
 	market := flag.String("market", "", "Market symbol (e.g., BTC-NOK) (required)")
-	quantity := flag.Float64("quantity", 0, "Order quantity (required)")
+	fiatAmount := flag.Float64("fiatAmount", 0, "Fiat amount to spend for a buy order (required for 'buy')")
 	showHelp := flag.Bool("h", false, "Show usage information")
 
 	flag.Parse()
@@ -23,8 +24,12 @@ func main() {
 		printUsageAndExit(nil)
 	}
 
-	if *side == "" || *market == "" || *quantity <= 0 {
-		printUsageAndExit(errors.New("all arguments 'side', 'market', and 'quantity' are required"))
+	if *side == "" || *market == "" {
+		printUsageAndExit(errors.New("arguments 'side' and 'market' are required"))
+	}
+
+	if *side == "buy" && *fiatAmount <= 0 {
+		printUsageAndExit(errors.New("argument 'fiatAmount' must be greater than zero for a buy order"))
 	}
 
 	ctx := context.Background()
@@ -42,7 +47,23 @@ func main() {
 
 	switch *side {
 	case "buy":
-		orderID, err := client.MarketBuy(ctx, *market, 1, *quantity)
+		asset := strings.SplitN(*market, "-", 2)[0]
+		var maxQuantity float64
+
+		// Dirty hack to determine max quantity based on the market
+		switch asset {
+		case "BTC":
+			maxQuantity = 1
+		case "LTC":
+			maxQuantity = 100
+		case "ATOM":
+			maxQuantity = 1000
+		default:
+			fmt.Printf("Unsupported market for buy: %s\n", *market)
+			os.Exit(1)
+		}
+
+		orderID, err := client.MarketBuy(ctx, *market, maxQuantity, *fiatAmount)
 		if err != nil {
 			fmt.Printf("Failed to place buy order: %v\n", err)
 			os.Exit(1)
@@ -50,7 +71,7 @@ func main() {
 		printOrder(ctx, client, orderID)
 
 	case "sell":
-		orderID, err := client.MarketSell(ctx, *market, *quantity)
+		orderID, err := client.MarketSell(ctx, *market, *flag.Float64("quantity", 0, "Exact amount to sell (required)"))
 		if err != nil {
 			fmt.Printf("Failed to place sell order: %v\n", err)
 			os.Exit(1)
@@ -68,15 +89,15 @@ func printUsageAndExit(err error) {
 		fmt.Printf("Error: %v\n\n", err)
 	}
 	fmt.Println("Usage:")
-	fmt.Printf("  %s --side=<buy|sell> --market=<market> --quantity=<amount>\n", programName)
+	fmt.Printf("  %s --side=<buy|sell> --market=<market> --fiatAmount=<fiat>\n", programName)
 	fmt.Println("\nEnvironment Variables:")
 	fmt.Println("  NBX_ACCOUNT_ID    Your NBX account ID")
 	fmt.Println("  NBX_KEY           Your NBX API key")
 	fmt.Println("  NBX_SECRET        Your NBX API secret")
 	fmt.Println("  NBX_PASSPHRASE    Your NBX API passphrase")
-	fmt.Println("\nExample:")
-	fmt.Printf("  %s --side=buy --market=BTC-EUR --quantity=100\n", programName)
-	fmt.Printf("  %s --side=sell --market=BTC-EUR --quantity=0.0001\n", programName)
+	fmt.Println("\nExamples:")
+	fmt.Printf("  %s --side=buy --market=BTC-NOK --fiatAmount=30000\n", programName)
+	fmt.Printf("  %s --side=sell --market=BTC-NOK --quantity=0.1\n", programName)
 	os.Exit(1)
 }
 
