@@ -51,7 +51,7 @@ func main() {
 
 	switch *side {
 	case "buy":
-		orderID, err := client.MarketBuy(ctx, *market, 0, *fiatAmount) // Fix: Use fiatAmount for buy orders
+		orderID, err := client.MarketBuy(ctx, *market, 9999, *fiatAmount)
 		if err != nil {
 			fmt.Printf("Failed to place buy order: %v\n", err)
 			os.Exit(1)
